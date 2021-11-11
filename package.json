@@ -36,9 +36,11 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "tsc -p .",
+    "build": "rm -rf lib && tsc",
+    "debug": "tsc --sourcemap",
     "publish-please": "publish-please",
-    "prepublishOnly": "publish-please guard"
+    "prepublishOnly": "publish-please guard",
+    "start": "lib/cli.js"
   },
   "dependencies": {
     "@ordercloud/portal-javascript-sdk": "0.0.1-beta.19",
