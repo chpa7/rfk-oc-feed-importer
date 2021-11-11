@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "incremental": false,
+    "module": "commonjs",
+    "declaration": true,
+    "outDir": "./lib",
+    "target": "es6",
+    "types": [
+      "node"
+    ],
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+  },
+  "include": [
+    "src/**/*",
+    "cli.ts"
+  ]
+}
