@@ -43,6 +43,12 @@ program
   .parse(process.argv);
 
 const options = program.opts();
+options.username = process.env.DEBUG_USERNAME || options.username;
+options.password = process.env.DEBUG_PASSWORD || options.username;
+options.marketplaceID = process.env.DEBUG_MARKETPLACE_ID || options.marketplaceID;
+options.template = process.env.DEBUG_TEMPLATE || options.template;
+options.filepath = process.env.DEBUG_FILEPATH || options.filepath;
+options.environment = process.env.DEBUG_ENVIRONMENT || options.environment;
 
 if (!options.username) {
   console.error(chalk.bold.red('> Portal username must be provided'));
@@ -54,7 +60,7 @@ if (!options.password) {
   program.help(); // This exits the process
 }
 
-if (!options.password) {
+if (!options.marketplaceID) {
   console.error(chalk.bold.red('> Marketplace ID must be provided'));
   program.help(); // This exits the process
 }
