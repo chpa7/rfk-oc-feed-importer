@@ -6,7 +6,6 @@ import * as helpers from './helpers';
 // import fs from 'fs';
 import path from 'path';
 import { csvToJson } from './helpers/csvToJson';
-import { Category } from 'ordercloud-javascript-sdk';
 
 async function run(options: SeedOptions) {
   await portalService.login(
@@ -28,13 +27,13 @@ async function run(options: SeedOptions) {
 
   const me = await OrderCloudSDK.Me.Get();
   console.log(me);
-  await categoryBuilder(productFeed, '0001'); // (Product Feed file, CatalogID)
-  await postCategoryAssignments('0001', '0001'); // (CatalogID, BuyerID)
+  const categoryIDs = await categoryBuilder(productFeed, '0001'); // (Product Feed file, CatalogID)
+  await postCategoryAssignments(categoryIDs, '0001', '0001'); // (CatalogID, BuyerID)
   await postProducts(productFeed, '0001', 'https:'); // (Save productfeed.csv to inputData folder, CatalogID, optional prefix for image paths)
 }
 
 async function categoryBuilder(productFeed: any[], catalogID: string) {
-  const processedCategoryIDs = new Set();
+  const processedCategoryIDs = new Set<string>();
 
   for (let row of productFeed) {
     const categoriesSplitByPipe = row.Categories.split('|');
@@ -64,6 +63,7 @@ async function categoryBuilder(productFeed: any[], catalogID: string) {
       }
     }
   }
+  return processedCategoryIDs;
 }
 
 async function postCategory(
@@ -87,19 +87,21 @@ async function postCategory(
   }
 }
 
-async function postCategoryAssignments(catalogID: string, buyerID: string) {
-  const categories = await helpers.listAll<Category>(OrderCloudSDK.Categories.List, catalogID, {
-    depth: 'all',
-  });
+async function postCategoryAssignments(
+  categoryIDSet: Set<string>,
+  catalogID: string,
+  buyerID: string
+) {
+  const categoryIDs = Array.from(categoryIDSet);
   let categoryProgress = 1;
   let categoryErrors = {};
-  const total = categories.length;
+  const total = categoryIDs.length;
   await helpers.batchOperations(
-    categories,
-    async function singleOperation(category: Category): Promise<any> {
+    categoryIDs,
+    async function singleOperation(categoryID: string): Promise<any> {
       // Post category assignment
       const categoryAssignmentRequest = {
-        CategoryID: category.ID,
+        CategoryID: categoryID,
         BuyerID: buyerID,
         Visible: true,
         ViewAllProducts: true,
@@ -107,11 +109,11 @@ async function postCategoryAssignments(catalogID: string, buyerID: string) {
 
       try {
         await OrderCloudSDK.Categories.SaveAssignment(catalogID, categoryAssignmentRequest);
-        console.log(`Posted ${categoryProgress} out of ${total}`);
+        console.log(`Posted ${categoryProgress} category assignments out of ${total}`);
         categoryProgress++;
       } catch (ex) {
         console.log('Category Assignment Error', ex);
-        categoryErrors[category.ID!] = ex;
+        categoryErrors[categoryID!] = ex;
         categoryProgress++;
       }
     }
