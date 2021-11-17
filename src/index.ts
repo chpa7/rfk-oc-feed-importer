@@ -60,20 +60,15 @@ async function categoryBuilder(
   const processedCategoryIDs = new Set<string>();
 
   for (let row of categoryFeed) {
-    // const categoriesSplitByPipe = row.BreadcrumbName.split('|');
-
-    // for (let fullCategoryPath of row.BreadcrumbName) {
     const categoryNames = row.BreadcrumbName.split('>');
     let categoryID = '';
     let parentCategoryID = '';
     for (let catName of categoryNames) {
       const categoryNameFormatted = catName.trimStart().trimEnd();
       const categoryIDFormatted = catName
-        // .replace(/\|/g, '-') // Convert pipes to hyphens,
         .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
         .replace(/ /g, '') // Remove spaces
         .toLowerCase();
-      // categoryID += categoryID.length == 0 ? categoryIDFormatted : '-' + categoryIDFormatted;
       categoryID += categoryIDFormatted;
       const matchingCategoryID = categoryIDMap.get(categoryID);
       if (processedCategoryIDs.has(matchingCategoryID)) {
@@ -85,7 +80,6 @@ async function categoryBuilder(
         parentCategoryID = matchingCategoryID;
       }
     }
-    // }
   }
   return processedCategoryIDs;
 }
@@ -236,7 +230,6 @@ async function postProducts(
         let categoryID = '';
         for (let catID of categoryIDs) {
           const categoryIDFormatted = catID
-            .replace(/\|/g, '-') // Convert pipes to hyphens,
             .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
             .replace(/ /g, '') // Remove spaces
             .toLowerCase();
