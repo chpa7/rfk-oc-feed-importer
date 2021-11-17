@@ -47,7 +47,7 @@ async function run(options: SeedOptions) {
     console.log(categoryIDFormatted);
   }
   console.log('category feed is', categoryFeed.length);
-  const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, '0001'); // (Product Feed file, Category ID Map from Category Feed file, CatalogID)
+  const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, '0001'); // (Category Feed file, Category ID Map from Category Feed file, CatalogID)
   await postCategoryAssignments(categoryIDs, '0001', '0001'); // (CatalogID, BuyerID)
   await postProducts(productFeed, categoryIDMap, '0001', 'https:'); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
 }
