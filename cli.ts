@@ -28,8 +28,12 @@ program
       .default('riggsandporter')
   )
   .option(
-    '-f, --filepath <path>',
-    'filepath to a reflektion feed, should adhere to reflektion standard'
+    '-p, --productfilepath <path>',
+    'filepath to a reflektion product feed, should adhere to reflektion standard'
+  )
+  .option(
+    '-c, --categoryfilepath <path>',
+    'filepath to a reflektion category feed, should adhere to reflektion standard'
   )
   .addOption(
     new Option('-e, --environment <ordercloudenvironment>')
@@ -72,7 +76,8 @@ feedimporter
     password: options.password,
     marketplaceID: options.marketplaceID,
     template: options.template,
-    filepath: options.filepath,
+    productFilePath: options.productFilePath,
+    categoryFilePath: options.categoryFilePath,
     environment: options.environment,
   })
   .then(() => {
