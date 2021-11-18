@@ -16,50 +16,68 @@ async function run(options: SeedOptions) {
   );
 
   let productFeed;
-  if (options.filepath) {
-    productFeed = await csvToJson(options.filepath);
-  } else {
-    // get data from template
-    const projectRoot = path.join(__dirname, '../', '../');
-    const templatesFolder = path.join(projectRoot, 'templates');
-    productFeed = await csvToJson(path.join(templatesFolder, `${options.template}.csv`));
+  let categoryFeed;
+  const projectRoot = path.join(__dirname, '../', '../');
+  const templatesFolder = path.join(projectRoot, 'templates');
+  if (options.productFilePath) {
+    productFeed = await csvToJson(options.productFilePath);
+    if (options.categoryFilePath) {
+      categoryFeed = await csvToJson(options.categoryFilePath);
+    }
   }
+  // get data from templates if not assigned
+  productFeed =
+    productFeed ??
+    (await csvToJson(path.join(templatesFolder, `${options.template}-products.csv`)));
+  categoryFeed =
+    categoryFeed ??
+    (await csvToJson(path.join(templatesFolder, `${options.template}-categories.csv`)));
 
   const me = await OrderCloudSDK.Me.Get();
   console.log(me);
-  const categoryIDs = await categoryBuilder(productFeed, '0001'); // (Product Feed file, CatalogID)
+
+  const categoryIDMap = new Map<string, string>();
+  for (let row of categoryFeed) {
+    const categoryIDFormatted = row.BreadcrumbName.replace(
+      /[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi,
+      ''
+    ) // Remove most special characters (not hyphens/underscores)
+      .replace(/ /g, '') // Remove spaces
+      .toLowerCase();
+    categoryIDMap.set(categoryIDFormatted, row.Id);
+  }
+  console.log('category feed is', categoryFeed.length);
+  const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, '0001'); // (Category Feed file, Category ID Map from Category Feed file, CatalogID)
   await postCategoryAssignments(categoryIDs, '0001', '0001'); // (CatalogID, BuyerID)
-  await postProducts(productFeed, '0001', 'https:'); // (Save productfeed.csv to inputData folder, CatalogID, optional prefix for image paths)
+  await postProducts(productFeed, categoryIDMap, '0001', 'https:'); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
 }
 
-async function categoryBuilder(productFeed: any[], catalogID: string) {
+async function categoryBuilder(
+  categoryFeed: any[],
+  categoryIDMap: Map<string, string>,
+  catalogID: string
+) {
   const processedCategoryIDs = new Set<string>();
 
-  for (let row of productFeed) {
-    const categoriesSplitByPipe = row.Categories.split('|');
-
-    for (let pipeSplitCategory of categoriesSplitByPipe) {
-      const categoryIDs = pipeSplitCategory.split('>');
-      let categoryID = '';
-      let parentCategoryID = '';
-      for (let catID of categoryIDs) {
-        const categoryNameFormatted = catID.trimStart().trimEnd();
-        const categoryIDFormatted = catID
-          .replace(/\|/g, '-') // Convert pipes to hyphens,
-          .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
-          .replace(/ /g, ''); // Remove spaces
-        categoryID +=
-          categoryID.length == 0
-            ? categoryIDFormatted.toLowerCase()
-            : '-' + categoryIDFormatted.toLowerCase();
-        if (processedCategoryIDs.has(categoryID)) {
-          parentCategoryID = categoryID;
-          continue;
-        } else {
-          processedCategoryIDs.add(categoryID);
-          await postCategory(categoryID, categoryNameFormatted, parentCategoryID, catalogID);
-          parentCategoryID = categoryID;
-        }
+  for (let row of categoryFeed) {
+    const categoryNames = row.BreadcrumbName.split('>');
+    let categoryID = '';
+    let parentCategoryID = '';
+    for (let catName of categoryNames) {
+      const categoryNameFormatted = catName.trimStart().trimEnd();
+      const categoryIDFormatted = catName
+        .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
+        .replace(/ /g, '') // Remove spaces
+        .toLowerCase();
+      categoryID += categoryIDFormatted;
+      const matchingCategoryID = categoryIDMap.get(categoryID);
+      if (processedCategoryIDs.has(matchingCategoryID)) {
+        parentCategoryID = matchingCategoryID;
+        continue;
+      } else {
+        processedCategoryIDs.add(matchingCategoryID);
+        await postCategory(matchingCategoryID, categoryNameFormatted, parentCategoryID, catalogID);
+        parentCategoryID = matchingCategoryID;
       }
     }
   }
@@ -80,7 +98,7 @@ async function postCategory(
   };
   try {
     const postedCategory = await OrderCloudSDK.Categories.Create(catalogID, categoryRequest);
-    console.log('Success', postedCategory.ID);
+    console.log('Posted category', postedCategory.ID);
     return postedCategory;
   } catch (ex) {
     console.log('Category Error', ex);
@@ -120,7 +138,12 @@ async function postCategoryAssignments(
   );
 }
 
-async function postProducts(productFeed: any[], catalogID: string, imageUrlPrefix = '') {
+async function postProducts(
+  productFeed: any[],
+  categoryIDMap: Map<string, string>,
+  catalogID: string,
+  imageUrlPrefix = ''
+) {
   let productProgress = 1;
   let productErrors = {};
   const total = productFeed.length;
@@ -137,7 +160,7 @@ async function postProducts(productFeed: any[], catalogID: string, imageUrlPrefi
         PriceBreaks: [
           {
             Quantity: 1,
-            Price: row.Price,
+            Price: row.SpecialPrice,
           },
         ],
       };
@@ -207,17 +230,14 @@ async function postProducts(productFeed: any[], catalogID: string, imageUrlPrefi
         let categoryID = '';
         for (let catID of categoryIDs) {
           const categoryIDFormatted = catID
-            .replace(/\|/g, '-') // Convert pipes to hyphens,
             .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
-            .replace(/ /g, ''); // Remove spaces
-          categoryID +=
-            categoryID.length == 0
-              ? categoryIDFormatted.toLowerCase()
-              : '-' + categoryIDFormatted.toLowerCase();
+            .replace(/ /g, '') // Remove spaces
+            .toLowerCase();
+          categoryID += categoryIDFormatted;
         }
         try {
           const categoryProductAssignmentRequest = {
-            CategoryID: categoryID,
+            CategoryID: categoryIDMap.get(categoryID),
             ProductID: row.Id,
           };
           await OrderCloudSDK.Categories.SaveProductAssignment(

@@ -2,7 +2,8 @@ export interface SeedOptions {
   username: string;
   password: string;
   template: 'riggsandporter';
-  filepath: string;
+  productFilePath: string;
+  categoryFilePath: string;
   marketplaceID: string;
   environment: 'sandbox' | 'staging' | 'production';
 }
