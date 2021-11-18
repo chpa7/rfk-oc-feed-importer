@@ -38,13 +38,13 @@ async function run(options: SeedOptions) {
 
   const categoryIDMap = new Map<string, string>();
   for (let row of categoryFeed) {
-    const categoryIDFormatted = row.BreadcrumbName
-      // .replace(/\|/g, '-') // Convert pipes to hyphens,
-      .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
+    const categoryIDFormatted = row.BreadcrumbName.replace(
+      /[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi,
+      ''
+    ) // Remove most special characters (not hyphens/underscores)
       .replace(/ /g, '') // Remove spaces
       .toLowerCase();
     categoryIDMap.set(categoryIDFormatted, row.Id);
-    console.log(categoryIDFormatted);
   }
   console.log('category feed is', categoryFeed.length);
   const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, '0001'); // (Category Feed file, Category ID Map from Category Feed file, CatalogID)
