@@ -28,29 +28,31 @@ program
       .default('riggsandporter')
   )
   .option(
-    '-p, --productfilepath <path>',
+    '-f, --productFilePath <path>',
     'filepath to a reflektion product feed, should adhere to reflektion standard'
   )
   .option(
-    '-c, --categoryfilepath <path>',
+    '-c, --categoryFilePath <path>',
     'filepath to a reflektion category feed, should adhere to reflektion standard'
   )
+  .option('-b, --buyerID <string>', '(Optional) ID of an EXISTING buyer')
+  .option('-x, --catalogID <string>', '(Optional) ID of an EXISTING catalog')
   .addOption(
     new Option('-e, --environment <ordercloudenvironment>')
       .choices(['sandbox', 'staging', 'production'])
       .default('sandbox')
   )
-  .option(
-    '-e, --environment <ordercloudenvironment>',
-    'The ordercloud environment to seed data against'
-  )
   .parse(process.argv);
 
 const options = program.opts();
 options.username = process.env.DEBUG_USERNAME || options.username;
-options.password = process.env.DEBUG_PASSWORD || options.username;
+options.password = process.env.DEBUG_PASSWORD || options.password;
 options.marketplaceID = process.env.DEBUG_MARKETPLACE_ID || options.marketplaceID;
 options.template = process.env.DEBUG_TEMPLATE || options.template;
+options.productFilePath = process.env.DEBUG_PRODUCT_FILE_PATH || options.productFilePath;
+options.categoryFilePath = process.env.DEBUG_CATEGORY_FILE_PATH || options.categoryFilePath;
+options.buyerID = process.env.DEBUG_BUYER_ID || options.buyerID;
+options.catalogID = process.env.DEBUG_CATALOG_ID || options.catalogID;
 options.filepath = process.env.DEBUG_FILEPATH || options.filepath;
 options.environment = process.env.DEBUG_ENVIRONMENT || options.environment;
 
@@ -84,24 +86,31 @@ feedimporter
     template: options.template,
     productFilePath: options.productFilePath,
     categoryFilePath: options.categoryFilePath,
+    buyerID: options.buyerID,
+    catalogID: options.catalogID,
     environment: options.environment,
   })
   .then(() => {
     spinner.stop();
     console.log(chalk.greenBright('Done! ✨'));
     console.log(
-      chalk.yellowBright('Check out your shiny new products ') +
-        chalk.magentaBright('on ordercloud') +
+      chalk.yellowBright('Check out your shiny new products & categories') +
+        chalk.magentaBright(' on ordercloud') +
         chalk.yellowBright('.')
     );
   })
   .catch(err => {
     spinner.stop();
     console.error(chalk.redBright('Aaww 💩 Something went wrong:'));
-    console.error(chalk.redBright(err.stack));
-    console.log('');
     console.error(chalk.redBright(err.message || err.statusText));
+    if (
+      err.message !==
+      'Error logging in to portal. Please make sure your username and password are correct'
+    ) {
+      console.error(chalk.redBright(err.stack));
+    }
     if (err.isOrderCloudError) {
+      console.log('');
       console.error(
         chalk.redBright(
           `${err.request.method} ${err.request.protocol + err.request.host + err.request.path}`
