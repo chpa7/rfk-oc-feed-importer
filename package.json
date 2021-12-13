@@ -2,7 +2,7 @@
   "name": "rfk-oc-feed-importer",
   "description": "A tool to import a Reflektion feed into OrderCloud",
   "author": "Sitecore Partner Success",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "./lib/src/index.js",
   "types": "./lib/src/index.d.ts",
   "bin": {
@@ -36,7 +36,7 @@
   ],
   "license": "MIT",
   "scripts": {
-    "build": "rm -rf lib && tsc && rm lib/package.json",
+    "build": "rm -rf lib && tsc && sed -i 's/\"files\":/\"_files\":/' lib/package.json",
     "debug": "tsc --sourcemap",
     "publish-please": "publish-please",
     "prepublishOnly": "publish-please guard",
