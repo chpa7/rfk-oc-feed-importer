@@ -1,6 +1,6 @@
 {
   "validations": {
-    "gitTag": true,
+    "gitTag": false,
     "branch": "main",
     "uncommittedChanges": true,
     "untrackedFiles": true,
