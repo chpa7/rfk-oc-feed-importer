@@ -4,6 +4,7 @@ export interface SeedOptions {
   template: 'riggsandporter';
   productFilePath?: string;
   categoryFilePath?: string;
+  prefixImageUrls: boolean;
   buyerID?: string;
   catalogID?: string;
   marketplaceID: string;

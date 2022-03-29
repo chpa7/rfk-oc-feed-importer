@@ -35,6 +35,7 @@ program
     '-c, --categoryFilePath <path>',
     'filepath to a reflektion category feed, should adhere to reflektion standard'
   )
+  .option('-i, --prefixImageUrls', '(Optional) prefix image urls with catalog id', false)
   .option('-b, --buyerID <string>', '(Optional) ID of an EXISTING buyer')
   .option('-x, --catalogID <string>', '(Optional) ID of an EXISTING catalog')
   .addOption(
@@ -51,6 +52,7 @@ options.marketplaceID = process.env.DEBUG_MARKETPLACE_ID || options.marketplaceI
 options.template = process.env.DEBUG_TEMPLATE || options.template;
 options.productFilePath = process.env.DEBUG_PRODUCT_FILE_PATH || options.productFilePath;
 options.categoryFilePath = process.env.DEBUG_CATEGORY_FILE_PATH || options.categoryFilePath;
+options.prefixImageUrls = process.env.DEBUG_PREFIX_IMAGE_URLS || options.prefixImageUrls;
 options.buyerID = process.env.DEBUG_BUYER_ID || options.buyerID;
 options.catalogID = process.env.DEBUG_CATALOG_ID || options.catalogID;
 options.filepath = process.env.DEBUG_FILEPATH || options.filepath;
@@ -86,6 +88,7 @@ feedimporter
     template: options.template,
     productFilePath: options.productFilePath,
     categoryFilePath: options.categoryFilePath,
+    prefixImageUrls: options.prefixImageUrls,
     buyerID: options.buyerID,
     catalogID: options.catalogID,
     environment: options.environment,

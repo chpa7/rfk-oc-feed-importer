@@ -72,7 +72,12 @@ async function run(options: SeedOptions) {
   await assignBuyerToCatalog(buyer, catalog);
   const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, catalog.ID); // (Category Feed file, Category ID Map from Category Feed file, CatalogID)
   await postCategoryAssignments(categoryIDs, catalog.ID, catalog.ID); // (CatalogID, BuyerID)
-  await postProducts(productFeed, categoryIDMap, catalog.ID, catalog.ID); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
+  await postProducts(
+    productFeed,
+    categoryIDMap,
+    catalog.ID,
+    options.prefixImageUrls ? catalog.ID : ''
+  ); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
 
   if (results.categories.errors) {
     console.log(
