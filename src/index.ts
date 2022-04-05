@@ -37,7 +37,7 @@ async function run(options: SeedOptions) {
   let productFeed;
   let categoryFeed;
   const projectRoot = path.join(__dirname, '../', '../');
-  const templatesFolder = path.join(projectRoot, '../../Website/src/discover-feeds/');
+  const templatesFolder = path.join(projectRoot, '../../../Website/src/discover-feeds/');
 
   // get product data from provided file or template
   if (options.productFilePath) {
