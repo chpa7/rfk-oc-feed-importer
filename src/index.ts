@@ -37,13 +37,15 @@ async function run(options: SeedOptions) {
   let productFeed;
   let categoryFeed;
   const projectRoot = path.join(__dirname, '../', '../');
-  const templatesFolder = path.join(projectRoot, 'templates');
+  const templatesFolder = path.join(projectRoot, '../../Website/src/discover-feeds/');
 
   // get product data from provided file or template
   if (options.productFilePath) {
     productFeed = await csvToJson(options.productFilePath);
   } else {
-    productFeed = await csvToJson(path.join(templatesFolder, `${options.template}-products.csv`));
+    productFeed = await csvToJson(
+      path.join(templatesFolder, `${options.template}_product_feed.csv`)
+    );
   }
 
   // get category data from provided file or template
@@ -51,7 +53,7 @@ async function run(options: SeedOptions) {
     categoryFeed = await csvToJson(options.categoryFilePath);
   } else {
     categoryFeed = await csvToJson(
-      path.join(templatesFolder, `${options.template}-categories.csv`)
+      path.join(templatesFolder, `${options.template}_category_feed.csv`)
     );
   }
   const categoryIDMap = new Map<string, string>();

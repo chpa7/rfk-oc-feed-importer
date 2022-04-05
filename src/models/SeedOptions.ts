@@ -1,7 +1,7 @@
 export interface SeedOptions {
   username: string;
   password: string;
-  template: 'riggsandporter';
+  template: 'playsummit';
   productFilePath?: string;
   categoryFilePath?: string;
   prefixImageUrls: boolean;
