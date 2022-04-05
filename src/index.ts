@@ -3,11 +3,10 @@ import portalService from './services/portal-service';
 import * as OrderCloudSDK from 'ordercloud-javascript-sdk';
 import * as helpers from './helpers';
 
-// import fs from 'fs';
 import path from 'path';
 import { csvToJson } from './helpers/csvToJson';
 import chalk from 'chalk';
-import { Buyer, Catalog } from 'ordercloud-javascript-sdk';
+import { Buyer, Catalog, Variant } from 'ordercloud-javascript-sdk';
 
 let results = {
   categories: {
@@ -57,13 +56,11 @@ async function run(options: SeedOptions) {
   }
   const categoryIDMap = new Map<string, string>();
   for (let row of categoryFeed) {
-    const categoryIDFormatted = row.BreadcrumbName.replace(
-      /[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi,
-      ''
-    ) // Remove most special characters (not hyphens/underscores)
+    const categoryIDFormatted = (row.breadcrumbs.length > 0 ? row.breadcrumbs : row.name)
+      .replace(/[`~!@#$%^&*()|+=?;:'",.<>{}[\]\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
       .replace(/ /g, '') // Remove spaces
       .toLowerCase();
-    categoryIDMap.set(categoryIDFormatted, row.Id);
+    categoryIDMap.set(categoryIDFormatted, row.ccid);
   }
   const buyer = await getBuyer(options.buyerID);
   console.log(chalk.greenBright(`Using buyer: '${buyer.Name}'`));
@@ -72,12 +69,7 @@ async function run(options: SeedOptions) {
   await assignBuyerToCatalog(buyer, catalog);
   const categoryIDs = await categoryBuilder(categoryFeed, categoryIDMap, catalog.ID); // (Category Feed file, Category ID Map from Category Feed file, CatalogID)
   await postCategoryAssignments(categoryIDs, catalog.ID, catalog.ID); // (CatalogID, BuyerID)
-  await postProducts(
-    productFeed,
-    categoryIDMap,
-    catalog.ID,
-    options.prefixImageUrls ? catalog.ID : ''
-  ); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
+  await postProducts(productFeed, catalog.ID, options.prefixImageUrls ? catalog.ID : ''); // (Save productfeed.csv to inputData folder, Category ID Map from Category Feed file, CatalogID, optional prefix for image paths)
 
   if (results.categories.errors) {
     console.log(
@@ -172,13 +164,14 @@ async function categoryBuilder(
         )
       );
     }
-    const categoryNames = row.BreadcrumbName.split('>');
+    const categoryNames =
+      row.breadcrumbs.split('>').length > 0 ? row.breadcrumbs.split('>') : [row.name];
     let categoryID = '';
     let parentCategoryID = '';
     for (let catName of categoryNames) {
       const categoryNameFormatted = catName.trimStart().trimEnd();
       const categoryIDFormatted = catName
-        .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
+        .replace(/[`~!@#$%^&*()|+=?;:'",.<>{}[\]\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
         .replace(/ /g, '') // Remove spaces
         .toLowerCase();
       categoryID += categoryIDFormatted;
@@ -253,15 +246,41 @@ async function postCategoryAssignments(
   );
 }
 
-async function postProducts(
-  productFeed: any[],
-  categoryIDMap: Map<string, string>,
-  catalogID: string,
-  imageUrlPrefix = ''
-) {
+async function postProducts(productFeed: any[], catalogID: string, imageUrlPrefix = '') {
   console.log(chalk.greenBright(`Found ${productFeed.length} products to import`));
   results.products.total = productFeed.length;
 
+  // We need to save the variant rows from the product feed for each product ID in order to eventually update the variant IDs, imageUrls
+  const productIdToVariantRowsMap = new Map<string, any[]>();
+
+  for (let row of productFeed) {
+    if (row.product_group !== row.sku) {
+      // First time we encounter a variant of that product so we process it
+      if (!productIdToVariantRowsMap.has(row.product_group)) {
+        await processSingleProduct(row, catalogID, imageUrlPrefix);
+
+        // Initialize the map entry
+        productIdToVariantRowsMap.set(row.product_group, []);
+      }
+
+      // Add the variant row to the corresponding map entry
+      productIdToVariantRowsMap.set(row.product_group, [
+        ...productIdToVariantRowsMap.get(row.product_group),
+        row,
+      ]);
+    }
+  }
+
+  // Create the specs for all the products with variants
+  await createSpecs(productIdToVariantRowsMap);
+
+  // Generate the variants for all corresponding products
+  await generateVariants(productIdToVariantRowsMap);
+
+  // Update the variants (IDs, imageUrls)
+  await updateVariants(productIdToVariantRowsMap);
+
+  // Process the normal products without variants
   await helpers.batchOperations(
     productFeed,
     async function singleOperation(row: any): Promise<any> {
@@ -274,105 +293,13 @@ async function postProducts(
         );
       }
 
-      // Post price schedule
-      const priceScheduleRequest = {
-        ID: row.Id,
-        Name: row.Name,
-        PriceBreaks: [
-          {
-            Quantity: 1,
-            Price: row.SpecialPrice,
-          },
-        ],
-      };
-
-      try {
-        await OrderCloudSDK.PriceSchedules.Save(priceScheduleRequest.ID, priceScheduleRequest);
-      } catch (ex) {
-        results.products.errors++;
-        handleError(`Error creating priceschedule for product ${row.ID}`, ex);
-        return;
-      }
-
-      // Post product
-      const productRequest = {
-        ID: row.Id,
-        Name: row.Name,
-        Active: true,
-        Description: row.Description,
-        DefaultPriceScheduleID: row.Id,
-        xp: {
-          Images: [
-            {
-              Url: imageUrlPrefix + row.ImageUrl,
-              ThumbnailUrl: imageUrlPrefix + row.Thumbnail,
-              Tags: null,
-            },
-          ],
-          Status: 'Draft',
-          IsResale: false,
-          IntegrationData: null,
-          HasVariants: false,
-          Note: '',
-          Tax: {
-            Category: 'P0000000',
-            Code: 'PC030156',
-            Description:
-              'Clothing And Related Products (Business-To-Business)-Work clothes (other)',
-          },
-          UnitOfMeasure: {
-            Qty: 1,
-            Unit: 'Per',
-          },
-          ProductType: 'Standard',
-          SizeTier: 'D',
-          Accessorials: null,
-          Currency: 'USD',
-          ArtworkRequired: false,
-          PromotionEligible: true,
-          FreeShipping: false,
-          FreeShippingMessage: 'Free Shipping',
-          Documents: null,
-        },
-      };
-
-      try {
-        await OrderCloudSDK.Products.Save(productRequest.ID, productRequest);
-      } catch (ex) {
-        results.products.errors++;
-        handleError(`Error creating product ${row.ID}`, ex);
-        return;
-      }
-
-      // Post category-product assignment
-      const categoriesSplitByPipe = row.Categories.split('|');
-      for (let pipeSpiltCategory of categoriesSplitByPipe) {
-        const categoryIDs = pipeSpiltCategory.split('>');
-        let categoryID = '';
-        for (let catID of categoryIDs) {
-          const categoryIDFormatted = catID
-            .replace(/[`~!@#$%^&*()|+=?;:'",.<>\{\}\[\]\\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
-            .replace(/ /g, '') // Remove spaces
-            .toLowerCase();
-          categoryID += categoryIDFormatted;
-        }
-        try {
-          const categoryProductAssignmentRequest = {
-            CategoryID: categoryIDMap.get(categoryID),
-            ProductID: row.Id,
-          };
-          await OrderCloudSDK.Categories.SaveProductAssignment(
-            catalogID,
-            categoryProductAssignmentRequest
-          );
-        } catch (ex) {
-          results.products.errors++;
-          handleError(`Error assigning product ${row.ID} to category ${categoryID}`, ex);
-          return;
-        }
+      // Normal product without variants
+      if (row.product_group === row.sku) {
+        await processSingleProduct(row, catalogID, imageUrlPrefix);
       }
     }
   );
+
   console.log('done');
 }
 
@@ -387,6 +314,212 @@ function handleError(message, err: any): void {
     console.error(chalk.redBright(JSON.stringify(err.errors, null, 4)));
   } else {
     console.error(chalk.redBright(err?.message));
+  }
+}
+
+async function processSingleProduct(row: any, catalogID: string, imageUrlPrefix: string) {
+  // Post price schedule
+  const priceScheduleRequest = {
+    ID: row.product_group,
+    Name: row.name,
+    PriceBreaks: [
+      {
+        Quantity: 1,
+        Price: row.final_price,
+      },
+    ],
+  };
+
+  try {
+    await OrderCloudSDK.PriceSchedules.Save(priceScheduleRequest.ID, priceScheduleRequest);
+  } catch (ex) {
+    results.products.errors++;
+    handleError(`Error creating priceschedule for product ${row.product_group}`, ex);
+    return;
+  }
+
+  const productRequest = {
+    ID: row.product_group,
+    Name: row.name,
+    Active: true,
+    Description: row.description,
+    DefaultPriceScheduleID: row.product_group,
+    xp: {
+      Images: [
+        {
+          Url: imageUrlPrefix + row.image_url,
+          ThumbnailUrl: imageUrlPrefix + row.image_url,
+          Tags: null,
+        },
+      ],
+      Status: 'Draft',
+      IsResale: false,
+      IntegrationData: null,
+      HasVariants: false,
+      Note: '',
+      Tax: {
+        Category: 'P0000000',
+        Code: 'PC030156',
+        Description: 'Clothing And Related Products (Business-To-Business)-Work clothes (other)',
+      },
+      UnitOfMeasure: {
+        Qty: 1,
+        Unit: 'Per',
+      },
+      ProductType: 'Standard',
+      SizeTier: 'D',
+      Accessorials: null,
+      Currency: 'USD',
+      ArtworkRequired: false,
+      PromotionEligible: true,
+      FreeShipping: false,
+      FreeShippingMessage: 'Free Shipping',
+      Documents: null,
+    },
+  };
+
+  try {
+    await OrderCloudSDK.Products.Save(productRequest.ID, productRequest);
+  } catch (ex) {
+    results.products.errors++;
+    handleError(`Error creating product ${row.product_group}`, ex);
+    return;
+  }
+
+  // Post category-product assignment
+  const categoriesSplitByPipe = row.ccids.split('|');
+  for (let pipeSplitCategory of categoriesSplitByPipe) {
+    const categoryIDFormatted = pipeSplitCategory
+      .replace(/[`~!@#$%^&*()|+=?;:'",.<>{}[\]\\/]/gi, '') // Remove most special characters (not hyphens/underscores)
+      .replace(/ /g, '') // Remove spaces
+      .toLowerCase();
+    try {
+      const categoryProductAssignmentRequest = {
+        CategoryID: categoryIDFormatted,
+        ProductID: row.product_group,
+      };
+      await OrderCloudSDK.Categories.SaveProductAssignment(
+        catalogID,
+        categoryProductAssignmentRequest
+      );
+    } catch (ex) {
+      results.products.errors++;
+      handleError(
+        `Error assigning product ${row.product_group} to category ${categoryIDFormatted}`,
+        ex
+      );
+      return;
+    }
+  }
+}
+
+async function createSpecs(productIdToVariantRowsMap: Map<string, any[]>) {
+  const possibleSpecs: string[] = ['Color', 'Size'];
+
+  for (let productId of productIdToVariantRowsMap.keys()) {
+    for (let specName of possibleSpecs) {
+      if (productIdToVariantRowsMap.get(productId)[0][specName.toLowerCase()]) {
+        try {
+          await OrderCloudSDK.Specs.Save(`${productId}-${specName}`, {
+            ID: `${productId}-${specName}`,
+            Name: specName,
+            Required: true,
+            DefinesVariant: true,
+          });
+        } catch (ex) {
+          results.products.errors++;
+          handleError(`Error creating spec for product ${productId}`, ex);
+          return;
+        }
+
+        for (let variantRow of productIdToVariantRowsMap.get(productId)) {
+          // Create all the spec options of this spec for each variant of this specific product
+          await createSpecOptions(productId, specName, variantRow);
+        }
+
+        // Assign this product to the spec
+        await createSpecProductAssignment(productId, specName);
+      }
+    }
+  }
+}
+
+async function createSpecOptions(productId: string, specName: string, variantRow: any) {
+  try {
+    await OrderCloudSDK.Specs.SaveOption(
+      `${productId}-${specName}`,
+      `${productId}-${specName}-${variantRow[specName.toLowerCase()]}`,
+      {
+        ID: `${productId}-${specName}-${variantRow[specName.toLowerCase()]}`,
+        Value: variantRow[specName.toLowerCase()],
+      }
+    );
+  } catch (ex) {
+    results.products.errors++;
+    handleError(`Error creating spec option for product ${variantRow.sku}`, ex);
+    return;
+  }
+}
+
+async function createSpecProductAssignment(productId: string, specName: string) {
+  try {
+    await OrderCloudSDK.Specs.SaveProductAssignment({
+      SpecID: `${productId}-${specName}`,
+      ProductID: productId,
+    });
+  } catch (ex) {
+    results.products.errors++;
+    handleError(`Error creating spec product assignment for product ${productId}`, ex);
+    return;
+  }
+}
+
+async function generateVariants(productIdToVariantRowsMap: Map<string, any[]>) {
+  for (let productId of productIdToVariantRowsMap.keys()) {
+    // Generate the variants for this specific product
+    try {
+      await OrderCloudSDK.Products.GenerateVariants(productId, { overwriteExisting: true });
+    } catch (ex) {
+      results.products.errors++;
+      handleError(`Error generating variants for product ${productId}`, ex);
+      return;
+    }
+  }
+}
+
+async function updateVariants(productIdToVariantRowsMap: Map<string, any[]>) {
+  for (let productId of productIdToVariantRowsMap.keys()) {
+    // Retrieve the variants for this specific product
+    let productVariants: Variant[] = [];
+    try {
+      // Variants are returned in reverse order than the one that appears in the product feed
+      productVariants = (await OrderCloudSDK.Products.ListVariants(productId))?.Items;
+    } catch (ex) {
+      results.products.errors++;
+      handleError(`Error retrieving variants for product ${productId}`, ex);
+      return;
+    }
+
+    // Update the variants (IDs, imageUrls) of this specific product
+    for (let variant of productVariants) {
+      let variantRow = productIdToVariantRowsMap.get(productId)?.pop();
+      try {
+        await OrderCloudSDK.Products.PatchVariant(productId, variant.ID, {
+          ID: variantRow.sku,
+          xp: {
+            Images: [
+              {
+                Url: variantRow.sku_image_url,
+              },
+            ],
+          },
+        });
+      } catch (ex) {
+        results.products.errors++;
+        handleError(`Error updating variant ${variant.ID} for product ${productId}`, ex);
+        return;
+      }
+    }
   }
 }
 

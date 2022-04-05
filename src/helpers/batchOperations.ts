@@ -11,6 +11,7 @@
  */
 export async function batchOperations<InputType = any, ReturnType = any>(
   inputs: InputType[],
+  // eslint-disable-next-line no-unused-vars
   operation: (input: InputType) => Promise<ReturnType>,
   batchSize = 100
 ): Promise<ReturnType[]> {
